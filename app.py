@@ -1,4 +1,5 @@
 # app.py
+import os
 from flask import Flask, request, jsonify
 from utils import load_model, predict_image
 
@@ -15,6 +16,9 @@ def predict():
         return jsonify({"error": "No image provided"}), 400
 
     image = request.files["image"]
+    if not image.filename:
+        return jsonify({"error": "No selected file"}), 400
+        
     try:
         prediction, confidence = predict_image(image, model)
         return jsonify({
@@ -22,7 +26,8 @@ def predict():
             "confidence": f"{confidence} %"
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.error(f"Error processing image: {str(e)}")
+        return jsonify({"error": "Error processing image. Please ensure you're uploading a valid image file."}), 500
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 10000)), debug=False)
