@@ -1,30 +1,52 @@
 # app.py
 import os
+import sys
 import logging
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from utils import load_model, predict_image
 
+# Configure logging first
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger(__name__)
+
+# Initialize Flask app
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Initialize model as None
+model = None
 
-# Load model
-try:
-    model = load_model()
-    logger.info("Model loaded successfully")
-except Exception as e:
-    logger.error(f"Error loading model: {str(e)}")
-    model = None
+def load_model_with_retry(max_retries=3):
+    global model
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"Attempting to load model (attempt {attempt + 1}/{max_retries})")
+            model = load_model()
+            logger.info("✅ Model loaded successfully")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Error loading model (attempt {attempt + 1}): {str(e)}")
+            if attempt < max_retries - 1:
+                logger.info("Retrying model load...")
+            else:
+                logger.error("Failed all attempts to load model")
+    return False
+
+# Load model on startup
+load_model_with_retry()
 
 @app.route("/")
 def home():
-    if model is None:
-        return "⚠️ API is running but model is not loaded properly!", 503
-    return "🌱 Plant Disease Detection API is running!"
+    return jsonify({
+        "status": "online",
+        "message": "🌱 Plant Disease Detection API is running!",
+        "model_status": "loaded" if model is not None else "not_loaded"
+    })
 
 @app.route("/predict", methods=["POST"])
 def predict():
@@ -78,6 +100,26 @@ def method_not_allowed(error):
 def internal_error(error):
     return jsonify({"error": "Internal server error"}), 500
 
+# Health check endpoint
+@app.route("/health")
+def health():
+    return jsonify({
+        "status": "healthy",
+        "model_loaded": model is not None
+    })
+
 if __name__ == "__main__":
+    # Get port from environment variable or use 5000 as default
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    
+    # Ensure model is loaded before starting server
+    if model is None:
+        load_model_with_retry()
+    
+    # Start server
+    app.run(
+        host="0.0.0.0",
+        port=port,
+        debug=False,
+        use_reloader=False  # Disable reloader to prevent double model loading
+    )
