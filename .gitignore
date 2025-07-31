@@ -7,5 +7,5 @@ env/
 venv/
 .env
 .venv
-*.pt
-*.pth
+# Allow model files
+!best_modelU.pt
